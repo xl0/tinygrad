@@ -33,9 +33,9 @@ class Tensor:
   no_grad: ClassVar[bool] = False
   default_type: ClassVar[DType] = dtypes.float32
 
-  def __init__(self, data:Union[int, float, list, LazyBuffer, LazyNumpyArray, np.ndarray], device=Device.DEFAULT, dtype:Optional[DType]=None, requires_grad:Optional[bool]=None):
+  def __init__(self, data:Union[int, float, list, tuple, LazyBuffer, LazyNumpyArray, np.ndarray], device=Device.DEFAULT, dtype:Optional[DType]=None, requires_grad:Optional[bool]=None):
     device = Device.canonicalize(device)
-    if isinstance(data, (int, float, list)):
+    if isinstance(data, (int, float, list, tuple)):
       data = np.array(data, dtype=(dtype if dtype is not None else Tensor.default_type).np)
     elif isinstance(data, LazyBuffer) and data.device != device:
       # TODO: this has to realize, it shouldn't have to
