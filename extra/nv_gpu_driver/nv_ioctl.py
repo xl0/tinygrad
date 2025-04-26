@@ -31,6 +31,8 @@ real_func_pool = {}
 def install_hook(c_function, python_function):
   orig_func = (ctypes.c_char*4096)()
   python_function_addr = ctypes.cast(ctypes.byref(python_function), ctypes.POINTER(ctypes.c_ulong)).contents.value
+  python_function_addr2 = ctypes.cast(python_function, ctypes.c_void_p).value
+  print(hex(python_function_addr), hex(python_function_addr2))
   # AARCH64 trampoline to ioctl
   if processor == "aarch64":
     # 0x0000000000000000:  70 00 00 10    adr x16, #0xc
@@ -80,6 +82,7 @@ gpus_fifo = []
 
 @ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.c_ulong, ctypes.c_void_p)
 def ioctl(fd, request, argp):
+  print(f"IOCTL {fd=}, {request=}, {argp=}")
   global global_ioctl_id, gpus_user_modes, gpus_mmio
   global_ioctl_id += 1
   st = time.perf_counter()

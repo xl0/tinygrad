@@ -104,10 +104,10 @@ generate_nvrtc() {
 }
 
 generate_nv() {
-  NVKERN_COMMIT_HASH=d6b75a34094b0f56c2ccadf14e5d0bd515ed1ab6
+  NVKERN_COMMIT_HASH=e8113f665d936d9f30a6d508f3bacd1e148539be
   NVKERN_SRC=/tmp/open-gpu-kernel-modules-$NVKERN_COMMIT_HASH
   if [ ! -d "$NVKERN_SRC" ]; then
-    git clone https://github.com/tinygrad/open-gpu-kernel-modules $NVKERN_SRC
+    git clone https://github.com/NVIDIA/open-gpu-kernel-modules $NVKERN_SRC
     pushd .
     cd $NVKERN_SRC
     git reset --hard $NVKERN_COMMIT_HASH
@@ -116,14 +116,18 @@ generate_nv() {
 
   clang2py -k cdefstum \
     extra/nv_gpu_driver/clc6c0qmd.h \
+    extra/nv_gpu_driver/clcbc0qmd.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/cl0080.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/cl2080_notification.h \
+    $NVKERN_SRC/src/common/sdk/nvidia/inc/class/cla06f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/clc56f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/clc56f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/clc56f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/cl83de.h \
+    $NVKERN_SRC/src/common/sdk/nvidia/inc/class/cl906f.h \
     $NVKERN_SRC/src/nvidia/generated/g_allclasses.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/class/clc6c0.h \
+    extra/nv_gpu_driver/clcbc0.h \
     $NVKERN_SRC/kernel-open/nvidia-uvm/clc6b5.h \
     $NVKERN_SRC/kernel-open/nvidia-uvm/uvm_ioctl.h \
     $NVKERN_SRC/kernel-open/nvidia-uvm/uvm_linux_ioctl.h \
@@ -138,7 +142,9 @@ generate_nv() {
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrl0000/*.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrl0080/*.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrl2080/*.h \
+    $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrla06f/*.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrl83de/*.h \
+    $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrl906f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrlc36f.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrlcb33.h \
     $NVKERN_SRC/src/common/sdk/nvidia/inc/ctrl/ctrla06c.h \
@@ -147,8 +153,9 @@ generate_nv() {
   fixup $BASE/nv_gpu.py
   sed -i "s\(0000000001)\1\g" $BASE/nv_gpu.py
   sed -i "s\import ctypes\import ctypes, os\g" $BASE/nv_gpu.py
-  sed -i 's/#\?\s\([A-Za-z0-9_]\+\) = MW ( \([0-9]\+\) : \([0-9]\+\) )/\1 = (\2 , \3)/' $BASE/nv_gpu.py # NVC6C0_QMDV03_00 processing
-  sed -i 's/#\sdef NVC6C0_QMD\([A-Za-z0-9_()]\+\):/def NVC6C0_QMD\1:/' $BASE/nv_gpu.py
+  sed -i 's/#\?\s\([A-Za-z0-9_]\+\) = MW ( \([0-9]\+\) : \([0-9]\+\) )/\1 = (\2 , \3)/' $BASE/nv_gpu.py # NV[6-B]6C0_QMDV03_00 processing
+  sed -i 's/#\sdef NVC\([6-9A-C]\)C0_QMD\([A-Za-z0-9_()]\+\):/def NVC\1C0_QMD\2:/' $BASE/nv_gpu.py
+  # sed -i 's/#\sdef NVCBC0_QMD\([A-Za-z0-9_()]\+\):/def NVCBC0_QMD\1:/' $BASE/nv_gpu.py
   sed -i 's/#\s*return MW(\([0-9i()*+]\+\):\([0-9i()*+]\+\))/    return (\1 , \2)/' $BASE/nv_gpu.py
   sed -i 's/#\?\s*\(.*\)\s*=\s*\(NV\)\?BIT\(32\)\?\s*(\s*\([0-9]\+\)\s*)/\1 = (1 << \4)/' $BASE/nv_gpu.py # name = BIT(x) -> name = (1 << x)
   sed -i "s/UVM_\([A-Za-z0-9_]\+\) = \['i', '(', '\([0-9]\+\)', ')'\]/UVM_\1 = \2/" $BASE/nv_gpu.py # UVM_name = ['i', '(', '<num>', ')'] -> UVM_name = <num>
@@ -211,6 +218,7 @@ generate_io_uring() {
 generate_libc() {
   clang2py -k cdefstum \
     $(dpkg -L libc6-dev | grep sys/mman.h) \
+    $(dpkg -L libc6-dev | grep sys/ioctl.h) \
     $(dpkg -L libc6-dev | grep sys/syscall.h) \
     /usr/include/string.h \
     /usr/include/elf.h \
@@ -220,7 +228,7 @@ generate_libc() {
 
   sed -i "s\import ctypes\import ctypes, ctypes.util, os\g" $BASE/libc.py
   sed -i "s\FIXME_STUB\libc\g" $BASE/libc.py
-  sed -i "s\FunctionFactoryStub()\None if (libc_path := ctypes.util.find_library('c')) is None else ctypes.CDLL(libc_path)\g" $BASE/libc.py
+  sed -i "s\FunctionFactoryStub()\None if (libc_path := ctypes.util.find_library('c')) is None else ctypes.CDLL(libc_path, use_errno=True)\g" $BASE/libc.py
 
   fixup $BASE/libc.py
 }
