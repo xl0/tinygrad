@@ -13,6 +13,8 @@ from tinygrad.nn import optim
 from tinygrad.helpers import Context, BEAM, WINO, getenv, colored, prod
 from extra.bench_log import BenchEvent, WallTimeEvent
 
+if getenv("FUSE_ARANGE", 1): Context(FUSE_ARANGE=1).__enter__() # On by default
+
 cifar_mean = [0.4913997551666284, 0.48215855929893703, 0.4465309133731618]
 cifar_std = [0.24703225141799082, 0.24348516474564, 0.26158783926049628]
 
@@ -213,7 +215,7 @@ def train_cifar():
   def random_crop(X:Tensor, crop_size:int=32) -> Tensor:
     assert X.shape[-1] >= crop_size
     Xl = X.split(X.shape[0]//16) # XXX This results in B=3125, which is prob not great for performance, not sure if matters.
-    Xp = [ x.pad(((0,0),(0, 0), *npad)) for x, npad in zip(Xl, negative_pad_grid(X.shape[-1] - crop_size)) ]
+    Xp = [ x.pad(((0,0), (0,0), *npad)) for x, npad in zip(Xl, negative_pad_grid(X.shape[-1] - crop_size)) ]
     return Tensor.cat(*Xp)
 
   @TinyJit
