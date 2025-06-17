@@ -218,6 +218,15 @@ def train_cifar():
     Xp = [ x.pad(((0,0), (0,0), *npad)) for x, npad in zip(Xl, negative_pad_grid(X.shape[-1] - crop_size)) ]
     return Tensor.cat(*Xp)
 
+  def cutmix(X, Y, mask_size=3):
+    mask = make_square_mask(X.shape, mask_size)
+    order = Tensor.randperm(X.shape[0], device=X.device)
+    X_patch, Y_patch = X[order], Y[order]
+    X_cutmix = mask.where(X_patch, X)
+    mix_portion = float(mask_size**2)/(X.shape[-2]*X.shape[-1])
+    Y_cutmix = mix_portion * Y_patch + (1. - mix_portion) * Y
+    return X_cutmix, Y_cutmix
+
   @TinyJit
   def jittable_transforms(X:Tensor, Y:Tensor):
     perms = Tensor.randperm(X.shape[0], device=X.device)
@@ -229,14 +238,16 @@ def train_cifar():
     return X[perms], Y[perms]
 
   @TinyJit
-  def cutmix(X, Y, mask_size=3):
-    mask = make_square_mask(X.shape, mask_size)
-    order = Tensor.randperm(X.shape[0], device=X.device)
-    X_patch, Y_patch = X[order], Y[order]
-    X_cutmix = mask.where(X_patch, X)
-    mix_portion = float(mask_size**2)/(X.shape[-2]*X.shape[-1])
-    Y_cutmix = mix_portion * Y_patch + (1. - mix_portion) * Y
-    return X_cutmix, Y_cutmix
+  def jittable_transforms_cutmix(X:Tensor, Y:Tensor, cutmix_size=3):
+    perms = Tensor.randperm(X.shape[0], device=X.device)
+    if getenv("RANDOM_CROP", 1):
+      X, Y = X[perms], Y[perms] #
+      X = random_crop(X, crop_size=32)
+    if getenv("RANDOM_FLIP", 1):
+      X = (Tensor.rand(X.shape[0],1,1,1) < 0.5).where(X.flip(-1), X) # flip LR
+    if getenv("CUTMIX", 1):
+      X, Y = cutmix(X, Y, mask_size=cutmix_size)
+    return X[perms], Y[perms]
 
   # the operations that remain inside batch fetcher is the ones that involves random operations
   def fetch_batches(X_in:Tensor, Y_in:Tensor, BS:int, is_train:bool):
@@ -245,9 +256,12 @@ def train_cifar():
       st = time.monotonic()
       X, Y = X_in, Y_in
       if is_train:
-        X, Y = jittable_transforms(X, Y)
         if getenv("CUTMIX", 1) and step >= hyp['net']['cutmix_steps']:
-          X, Y = cutmix(X, Y, mask_size=hyp['net']['cutmix_size'])
+          X, Y = jittable_transforms_cutmix(X, Y, cutmix_size=hyp['net']['cutmix_size'])
+        else:
+          X, Y = jittable_transforms(X, Y)
+
+          # X, Y = cutmix(X, Y, mask_size=hyp['net']['cutmix_size'])
       et = time.monotonic()
       print(f"shuffling {'training' if is_train else 'test'} dataset in {(et-st)*1e3:.2f} ms ({epoch=})")
       for i in range(0, X.shape[0], BS):
