@@ -215,13 +215,12 @@ def train_cifar():
     return X.gather(-1, (Xs + Xi).expand(-1, 3, X.shape[2], -1)).gather(-2, ((Ys+Yi).expand(-1, 3, crop_size, crop_size)))
 
   @TinyJit
-  def jittable_transforms(X:Tensor, Y:Tensor):
-    perms = Tensor.randperm(X.shape[0], device=X.device)
+  def jittable_transforms(X:Tensor, Y:Tensor, perms):
     if getenv("RANDOM_CROP", 1):
       X = random_crop(X, crop_size=32)
     if getenv("RANDOM_FLIP", 1):
       X = (Tensor.rand(X.shape[0],1,1,1) < 0.5).where(X.flip(-1), X) # flip LR
-    return X[perms], Y[perms], perms # perms is expensive to calculate, and we can reuse it.
+    return X[perms], Y[perms] # perms is expensive to calculate, and we can reuse it.
 
   @TinyJit
   def cutmix(X, Y, order, mask_size=3):
@@ -232,6 +231,10 @@ def train_cifar():
     Y_cutmix = mix_portion * Y_patch + (1. - mix_portion) * Y
     return X_cutmix, Y_cutmix
 
+  @TinyJit # Note: changes to n are ignored after it's jitted.
+  def randperm(n:int, device) -> Tensor:
+    return Tensor.randperm(n, device=device)
+
   # the operations that remain inside batch fetcher is the ones that involves random operations
   def fetch_batches(X_in:Tensor, Y_in:Tensor, BS:int, is_train:bool):
     step, epoch = 0, 0
@@ -239,7 +242,8 @@ def train_cifar():
       st = time.monotonic()
       X, Y = X_in, Y_in
       if is_train:
-        X, Y, perms = jittable_transforms(X, Y)
+        perms = randperm(X.shape[0], device=X.device)
+        X, Y = jittable_transforms(X, Y, perms)
         if getenv("CUTMIX", 1) and step >= hyp['net']['cutmix_steps']:
           X, Y = cutmix(X, Y, perms, mask_size=hyp['net']['cutmix_size'])
       et = time.monotonic()
