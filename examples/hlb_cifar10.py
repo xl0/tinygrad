@@ -204,19 +204,33 @@ def train_cifar():
     return (idx_x >= low_x) * (idx_x < (low_x + mask_size)) * (idx_y >= low_y) * (idx_y < (low_y + mask_size))
 
 
-  def negative_pad_grid(n=4):
-    # Generate all possible padding combinations that sum to biting n elements from h and w.
-    pad_options = [(-i, i-n) for i in range(n+1)]
+  # def negative_pad_grid(n=4):
+  #   # Generate all possible padding combinations that sum to biting n elements from h and w.
+  #   pad_options = [(-i, i-n) for i in range(n+1)]
 
-    # Create all possible combinations of padding for left/right and top/bottom
-    return [(pad_options[x % len(pad_options)], pad_options[y % len(pad_options)])
-            for x in range(n) for y in range(n)]
+  #   # Create all possible combinations of padding for left/right and top/bottom
+  #   return [(pad_options[x % len(pad_options)], pad_options[y % len(pad_options)])
+  #           for x in range(n) for y in range(n)]
 
-  def random_crop(X:Tensor, crop_size:int=32) -> Tensor:
-    assert X.shape[-1] >= crop_size
-    Xl = X.split(X.shape[0]//16) # XXX This results in B=3125, which is prob not great for performance, not sure if matters.
-    Xp = [ x.pad(((0,0), (0,0), *npad)) for x, npad in zip(Xl, negative_pad_grid(X.shape[-1] - crop_size)) ]
-    return Tensor.cat(*Xp)
+  # def random_crop(X:Tensor, crop_size:int=32) -> Tensor:
+  #   assert X.shape[-1] >= crop_size
+  #   Xl = X.split(X.shape[0]//16) # XXX This results in B=3125, which is prob not great for performance, not sure if matters.
+  #   Xp = [ x.pad(((0,0), (0,0), *npad)) for x, npad in zip(Xl, negative_pad_grid(X.shape[-1] - crop_size)) ]
+  #   return Tensor.cat(*Xp)
+
+
+  def make_random_crop_indices(shape, mask_size) -> Tensor:
+    BS, _, H, W = shape
+    low_x = Tensor.randint(BS, low=0, high=W-mask_size).reshape(BS,1,1,1)
+    low_y = Tensor.randint(BS, low=0, high=H-mask_size).reshape(BS,1,1,1)
+    idx_x = Tensor.arange(mask_size, dtype=dtypes.int32).reshape((1,1,1,mask_size))
+    idx_y = Tensor.arange(mask_size, dtype=dtypes.int32).reshape((1,1,mask_size,1))
+    return low_x.contiguous(), low_y.contiguous(), idx_x.contiguous(), idx_y.contiguous()
+
+  def random_crop(X:Tensor, crop_size=32):
+    Xs, Ys, Xi, Yi = make_random_crop_indices(X.shape, crop_size)
+    return X.gather(-1, (Xs + Xi).expand(-1, 3, X.shape[2], -1)).gather(-2, ((Ys+Yi).expand(-1, 3, crop_size, crop_size))).contiguous()
+
 
   @TinyJit
   def jittable_transforms(X:Tensor, Y:Tensor):
